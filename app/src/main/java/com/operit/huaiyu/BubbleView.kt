@@ -24,23 +24,23 @@ enum class BubbleStyle(
 class BubbleView(
     context: Context,
     private val text: String,
-    private val style: BubbleStyle = BubbleStyle.NORMAL
+    private val bubbleStyle: BubbleStyle = BubbleStyle.NORMAL
 ) : View(context) {
 
     private val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = style.bgColor
-        this.style = Paint.Style.FILL
+        color = bubbleStyle.bgColor
+        style = Paint.Style.FILL
         setShadowLayer(dp(4f), 0f, dp(2f), 0x33000000)
     }
 
     private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = style.borderColor
-        this.style = Paint.Style.STROKE
+        color = bubbleStyle.borderColor
+        style = Paint.Style.STROKE
         strokeWidth = dp(1f)
     }
 
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = style.textColor
+        color = bubbleStyle.textColor
         textSize = sp(12f)
         textAlign = Paint.Align.CENTER
     }
