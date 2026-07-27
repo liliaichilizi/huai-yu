@@ -578,7 +578,7 @@ class OverlayService : Service() {
                     handler.post { visualHeatUpdate() }
                 }
             }
-        }, 30_000L, 30_000L)
+        }, 10_000L, 10_000L)
     }
 
     private fun addHeat(amount: Int) {
