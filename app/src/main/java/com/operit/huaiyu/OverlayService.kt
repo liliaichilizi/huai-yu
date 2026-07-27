@@ -325,7 +325,7 @@ class OverlayService : Service() {
         }
         val filter = IntentFilter(NotificationListener.ACTION_NOTIFICATION_POSTED)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(notificationReceiver, filter, RECEIVER_NOT_EXPORTED)
+            registerReceiver(notificationReceiver, filter, Context.RECEIVER_EXPORTED)
         } else {
             registerReceiver(notificationReceiver, filter)
         }

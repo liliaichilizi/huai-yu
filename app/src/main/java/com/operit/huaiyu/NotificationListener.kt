@@ -27,6 +27,7 @@ class NotificationListener : NotificationListenerService() {
             }
 
             val intent = Intent(ACTION_NOTIFICATION_POSTED).apply {
+                setPackage("com.operit.huaiyu")
                 putExtra(EXTRA_PACKAGE_NAME, packageName)
                 putExtra(EXTRA_TITLE, title)
                 putExtra(EXTRA_TEXT, text)
