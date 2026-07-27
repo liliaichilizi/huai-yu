@@ -2,13 +2,43 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:orientation="vertical"
     android:gravity="center"
-    android:orientation="vertical">
+    android:padding="32dp"
+    android:background="#FFFAFAFA">
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="淮鱼桌宠 - 等待接入悬浮窗"
-        android:textSize="20sp" />
-        
+        android:text="淮鱼桌宠"
+        android:textSize="28sp"
+        android:textColor="#FF333333"
+        android:textStyle="bold"
+        android:layout_marginBottom="8dp" />
+
+    <TextView
+        android:id="@+id/statusText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="加载中..."
+        android:textSize="14sp"
+        android:textColor="#FF666666"
+        android:gravity="center"
+        android:layout_marginBottom="32dp" />
+
+    <Button
+        android:id="@+id/startButton"
+        android:layout_width="200dp"
+        android:layout_height="48dp"
+        android:text="启动桌宠"
+        android:textSize="16sp"
+        android:layout_marginBottom="12dp" />
+
+    <Button
+        android:id="@+id/stopButton"
+        android:layout_width="200dp"
+        android:layout_height="48dp"
+        android:text="关闭桌宠"
+        android:textSize="16sp" />
+
 </LinearLayout>
