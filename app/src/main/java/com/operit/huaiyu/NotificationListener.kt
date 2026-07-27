@@ -21,8 +21,14 @@ class NotificationListener : NotificationListenerService() {
             val title = notification.extras.getString("android.title")
             val text = notification.extras.getCharSequence("android.text")?.toString()
 
-            // 过滤掉自己和一些不重要的通知
-            if (packageName == "com.operit.huaiyu" || title == null || text == null) {
+            // 通知黑名单：不转发这些App的通知
+            val blacklist = setOf(
+                "com.operit.huaiyu",      // 自己
+                "com.follow.clash",       // 赔钱机场（VPN）
+                "com.android.systemui",   // 系统UI
+                "android"                 // 系统通知
+            )
+            if (packageName in blacklist || title == null || text == null) {
                 return
             }
 

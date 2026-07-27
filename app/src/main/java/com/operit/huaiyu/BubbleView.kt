@@ -5,27 +5,42 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
-import android.os.Handler
-import android.os.Looper
 import android.util.TypedValue
 import android.view.View
 
-class BubbleView(context: Context, private val text: String) : View(context) {
+enum class BubbleStyle(
+    val bgColor: Int,
+    val borderColor: Int,
+    val textColor: Int
+) {
+    NORMAL(0xFFFFFFFF.toInt(), 0xFFE0E0E0.toInt(), 0xFF333333.toInt()),
+    JEALOUS(0xFFE8F5E9.toInt(), 0xFF81C784.toInt(), 0xFF2E7D32.toInt()),
+    LOVE(0xFFFCE4EC.toInt(), 0xFFF48FB1.toInt(), 0xFFC2185B.toInt()),
+    SLEEPY(0xFFF3E5F5.toInt(), 0xFFCE93D8.toInt(), 0xFF6A1B9A.toInt()),
+    ALERT(0xFFFFF3E0.toInt(), 0xFFFFB74D.toInt(), 0xFFE65100.toInt()),
+    SYSTEM(0xFFE3F2FD.toInt(), 0xFF90CAF9.toInt(), 0xFF1565C0.toInt())
+}
+
+class BubbleView(
+    context: Context,
+    private val text: String,
+    private val style: BubbleStyle = BubbleStyle.NORMAL
+) : View(context) {
 
     private val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFFFFFFFF.toInt()
-        style = Paint.Style.FILL
+        color = style.bgColor
+        this.style = Paint.Style.FILL
         setShadowLayer(dp(4f), 0f, dp(2f), 0x33000000)
     }
 
     private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFFE0E0E0.toInt()
-        style = Paint.Style.STROKE
+        color = style.borderColor
+        this.style = Paint.Style.STROKE
         strokeWidth = dp(1f)
     }
 
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFF333333.toInt()
+        color = style.textColor
         textSize = sp(12f)
         textAlign = Paint.Align.CENTER
     }

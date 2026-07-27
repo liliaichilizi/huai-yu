@@ -27,6 +27,7 @@ import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.BroadcastReceiver
 import android.content.IntentFilter
+import android.os.BatteryManager
 
 @Suppress("DEPRECATION")
 class OverlayService : Service() {
@@ -45,6 +46,17 @@ class OverlayService : Service() {
 
     private var bubbleView: BubbleView? = null
     private var bubbleParams: WindowManager.LayoutParams? = null
+
+    // Loneliness progression system
+    private var lonelinessTimer: Timer? = null
+    private var lonelinessLevel = 0  // 0=normal, 1=peek, 2=bubble, 3=fidget, 4=drowsy, 5=asleep
+    private var lastInteractionTime = System.currentTimeMillis()
+    private val lonelinessInterval = 30_000L  // 30s per level
+
+    // Battery awareness
+    private var batteryReceiver: BroadcastReceiver? = null
+    private var lastBatteryLevel = -1
+    private var lastChargingState = false
 
     // Gesture state
     private var initialX = 0
@@ -86,6 +98,15 @@ class OverlayService : Service() {
         3 to "你够了啊！",
         4 to "再戳就生气了！",
         5 to "…我生气了"
+    )
+
+    // Loneliness progression texts
+    private val lonelinessTexts = mapOf(
+        1 to listOf("…", "嗯？", "偷偷看你一眼"),
+        2 to listOf("无聊…", "吹个泡泡~", "…好闲"),
+        3 to listOf("东西搬来搬去…", "收拾收拾", "找点事做"),
+        4 to listOf("好困…", "眼皮好重", "打了个哈欠~"),
+        5 to listOf("zzZ", "睡着了…", "…")
     )
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -168,6 +189,8 @@ class OverlayService : Service() {
         startScreenshotObserver()
         startAppObserver()
         startNotificationReceiver()
+        startLonelinessTimer()
+        startBatteryReceiver()
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -186,6 +209,9 @@ class OverlayService : Service() {
                     lastMoveY = event.rawY
                     velocityX = 0f
                     velocityY = 0f
+
+                    // Reset loneliness on any interaction
+                    resetLoneliness()
 
                     longPressRunnable = Runnable {
                         if (!isDragging) {
@@ -319,7 +345,11 @@ class OverlayService : Service() {
                         "com.tencent.mobileqq" -> "QQ消息: ${title}"
                         else -> "收到新消息: ${title}"
                     }
-                    showBubble(message)
+                    val bubbleStyle = when (packageName) {
+                        "com.tencent.mm", "com.tencent.mobileqq" -> BubbleStyle.LOVE
+                        else -> BubbleStyle.SYSTEM
+                    }
+                    showBubble(message, bubbleStyle)
                 }
             }
         }
@@ -334,6 +364,106 @@ class OverlayService : Service() {
     private fun stopNotificationReceiver() {
         notificationReceiver?.let { unregisterReceiver(it) }
         notificationReceiver = null
+    }
+
+    // ===== Loneliness Progression System =====
+    private fun startLonelinessTimer() {
+        lonelinessTimer = Timer()
+        lonelinessTimer?.schedule(object : TimerTask() {
+            override fun run() {
+                val elapsed = System.currentTimeMillis() - lastInteractionTime
+                val newLevel = (elapsed / lonelinessInterval).toInt().coerceIn(0, 5)
+                if (newLevel > lonelinessLevel) {
+                    lonelinessLevel = newLevel
+                    handler.post { onLonelinessLevelChanged(newLevel) }
+                }
+            }
+        }, lonelinessInterval, lonelinessInterval)
+    }
+
+    private fun onLonelinessLevelChanged(level: Int) {
+        val texts = lonelinessTexts[level] ?: return
+        val text = texts.random()
+        val style = when (level) {
+            4, 5 -> BubbleStyle.SLEEPY
+            else -> BubbleStyle.NORMAL
+        }
+        showBubble(text, style)
+
+        // Trigger matching animation
+        val anim = when (level) {
+            1 -> "poked"      // peek
+            2 -> "doubletap"  // playful
+            3 -> "poked"      // fidget
+            4 -> "hideface"   // drowsy
+            5 -> "hideface"   // asleep
+            else -> null
+        }
+        anim?.let { triggerAnimation(it, 1500) }
+    }
+
+    private fun resetLoneliness() {
+        lastInteractionTime = System.currentTimeMillis()
+        if (lonelinessLevel > 0) {
+            lonelinessLevel = 0
+            triggerAnimation("comeback", 500)
+        }
+    }
+
+    private fun stopLonelinessTimer() {
+        lonelinessTimer?.cancel()
+        lonelinessTimer = null
+    }
+
+    // ===== Battery Awareness =====
+    private fun startBatteryReceiver() {
+        batteryReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                intent ?: return
+                val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+                val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, 100)
+                val percent = (level * 100) / scale
+                val status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+                val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                    status == BatteryManager.BATTERY_STATUS_FULL
+
+                // Charging state changed
+                if (isCharging != lastChargingState) {
+                    lastChargingState = isCharging
+                    if (isCharging) {
+                        handler.post {
+                            showBubble("充上电了~ 舒服", BubbleStyle.SYSTEM)
+                            triggerAnimation("doubletap", 800)
+                        }
+                    } else {
+                        handler.post {
+                            showBubble("拔掉充电器了", BubbleStyle.SYSTEM)
+                        }
+                    }
+                }
+
+                // Low battery warnings
+                if (!isCharging && percent != lastBatteryLevel) {
+                    when {
+                        percent <= 10 && lastBatteryLevel > 10 -> handler.post {
+                            showBubble("只剩${percent}%了！要没电了！", BubbleStyle.ALERT)
+                            triggerAnimation("angry", 800)
+                        }
+                        percent <= 20 && lastBatteryLevel > 20 -> handler.post {
+                            showBubble("电量${percent}%…有点低了", BubbleStyle.ALERT)
+                        }
+                    }
+                }
+                lastBatteryLevel = percent
+            }
+        }
+        val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+        registerReceiver(batteryReceiver, filter)
+    }
+
+    private fun stopBatteryReceiver() {
+        batteryReceiver?.let { unregisterReceiver(it) }
+        batteryReceiver = null
     }
 
     private fun onTap() {
@@ -407,7 +537,7 @@ class OverlayService : Service() {
         webView.evaluateJavascript("triggerState('$state', $durationMs)", null)
     }
 
-    private fun showBubble(text: String) {
+    private fun showBubble(text: String, style: BubbleStyle = BubbleStyle.NORMAL) {
         removeBubble()
 
         val overlayType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -420,7 +550,7 @@ class OverlayService : Service() {
         val bubbleW = dp(140)
         val bubbleH = dp(50)
 
-        bubbleView = BubbleView(this, text)
+        bubbleView = BubbleView(this, text, style)
         bubbleParams = WindowManager.LayoutParams(
             bubbleW, bubbleH, overlayType,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
@@ -486,6 +616,8 @@ class OverlayService : Service() {
         screenshotObserver?.stopWatching()
         stopAppObserver()
         stopNotificationReceiver()
+        stopLonelinessTimer()
+        stopBatteryReceiver()
         removeBubble()
         if (isViewInitialized) {
             webView.destroy()
