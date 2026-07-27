@@ -3,8 +3,12 @@ package com.operit.huaiyu
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.BitmapFactory
 import android.graphics.PixelFormat
 import android.net.Uri
@@ -25,11 +29,21 @@ class OverlayService : Service() {
     private lateinit var overlayView: View
     private lateinit var layoutParams: WindowManager.LayoutParams
     private lateinit var gestureDetector: GestureDetector
+    private lateinit var notificationManager: NotificationManager
 
     private var isPetVisible = true
 
+    private val receiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action == ACTION_TOGGLE_VISIBILITY) {
+                togglePetVisibility()
+            }
+        }
+    }
+
     companion object {
         const val ACTION_UPDATE_SIZE = "com.operit.huaiyu.ACTION_UPDATE_SIZE"
+        const val ACTION_TOGGLE_VISIBILITY = "com.operit.huaiyu.ACTION_TOGGLE_VISIBILITY"
         const val EXTRA_PET_SIZE = "extra_pet_size"
         private const val CHANNEL_ID = "huaiyu_overlay_channel"
         private const val NOTIFICATION_ID = 1
@@ -37,11 +51,21 @@ class OverlayService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    override fun onCreate() {
+        super.onCreate()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(receiver, IntentFilter(ACTION_TOGGLE_VISIBILITY), RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(receiver, IntentFilter(ACTION_TOGGLE_VISIBILITY))
+        }
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_UPDATE_SIZE) {
             val sizeDp = intent.getIntExtra(EXTRA_PET_SIZE, PetPrefs.getPetSize(this))
             updatePetSize(sizeDp)
         } else if (!isViewInitialized) {
+            notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
             windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
             setupOverlayView()
             createNotificationChannel()
@@ -54,18 +78,32 @@ class OverlayService : Service() {
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(CHANNEL_ID, "淮鱼桌宠", NotificationManager.IMPORTANCE_LOW)
-            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+            notificationManager.createNotificationChannel(channel)
         }
     }
 
     private fun buildNotification(): Notification {
+        val toggleIntent = Intent(ACTION_TOGGLE_VISIBILITY)
+        val pendingIntent = PendingIntent.getBroadcast(
+            this, 0, toggleIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val actionText = if (isPetVisible) "隐藏" else "显示"
+
         return androidx.core.app.NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("淮鱼桌宠")
             .setContentText("桌宠正在陪着你")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setPriority(androidx.core.app.NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
+            .addAction(0, actionText, pendingIntent)
             .build()
+    }
+
+    private fun togglePetVisibility() {
+        isPetVisible = !isPetVisible
+        overlayView.alpha = if (isPetVisible) 1.0f else 0.0f
+        // Update notification
+        notificationManager.notify(NOTIFICATION_ID, buildNotification())
     }
 
     private fun setupOverlayView() {
@@ -121,21 +159,13 @@ class OverlayService : Service() {
                 return true
             }
 
-            override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
-                // 单击：摸摸头，啥也不干
-                return true
-            }
-
             override fun onDoubleTap(e: MotionEvent): Boolean {
-                // 双击：弹个俏皮话
                 Toast.makeText(this@OverlayService, "你戳我干嘛", Toast.LENGTH_SHORT).show()
                 return true
             }
 
             override fun onLongPress(e: MotionEvent) {
-                // 长按：切换显示/隐藏
-                isPetVisible = !isPetVisible
-                overlayView.alpha = if (isPetVisible) 1.0f else 0.0f
+                togglePetVisibility()
                 val message = if (isPetVisible) "我回来啦" else "我先藏起来咯"
                 Toast.makeText(this@OverlayService, message, Toast.LENGTH_SHORT).show()
             }
@@ -161,11 +191,9 @@ class OverlayService : Service() {
             try {
                 val uri = Uri.parse(uriString)
                 contentResolver.openInputStream(uri)?.use { inputStream ->
-                    val bitmap = BitmapFactory.decodeStream(inputStream)
-                    setImageBitmap(bitmap)
+                    setImageBitmap(BitmapFactory.decodeStream(inputStream))
                 }
             } catch (e: Exception) {
-                // Fallback to a transparent view if image loading fails
                 setBackgroundColor(0x00000000)
             }
         }
@@ -180,6 +208,7 @@ class OverlayService : Service() {
         if (isViewInitialized) {
             windowManager.removeView(overlayView)
         }
+        unregisterReceiver(receiver)
         isViewInitialized = false
     }
 }
