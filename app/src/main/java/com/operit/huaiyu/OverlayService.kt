@@ -28,6 +28,7 @@ import android.content.Context
 import android.content.BroadcastReceiver
 import android.content.IntentFilter
 import android.os.BatteryManager
+import java.util.Calendar
 
 @Suppress("DEPRECATION")
 class OverlayService : Service() {
@@ -52,6 +53,20 @@ class OverlayService : Service() {
     private var lonelinessLevel = 0  // 0=normal, 1=peek, 2=bubble, 3=fidget, 4=drowsy, 5=asleep
     private var lastInteractionTime = System.currentTimeMillis()
     private val lonelinessInterval = 30_000L  // 30s per level
+
+    // Heat system (0-100)
+    private var heat = 0
+    private var heatDecayTimer: Timer? = null
+
+    // Self-talk & notification whisper
+    private var selfTalkTimer: Timer? = null
+    private var notificationWhisperTimer: Timer? = null
+
+    // Drink water reminder
+    private var drinkWaterTimer: Timer? = null
+
+    // Quick app switch detection
+    private val appSwitchTimestamps = mutableListOf<Long>()
 
     // Battery awareness
     private var batteryReceiver: BroadcastReceiver? = null
@@ -113,6 +128,39 @@ class OverlayService : Service() {
         3 to listOf("东西搬来搬去…", "收拾收拾", "找点事做"),
         4 to listOf("好困…", "眼皮好重", "打了个哈欠~"),
         5 to listOf("zzZ", "睡着了…", "…")
+    )
+
+    // Self-talk word pools by time period
+    private val selfTalkPools = mapOf(
+        "morning" to listOf(
+            "早安呀", "今天天气怎么样", "新的一天~",
+            "要喝杯水吗", "伸个懒腰", "早起的猫有鱼吃"
+        ),
+        "noon" to listOf(
+            "该吃饭了吧", "中午吃什么", "困了…",
+            "下午还有课吗", "摸鱼时间到", "要午休吗"
+        ),
+        "afternoon" to listOf(
+            "下午好~", "有点无聊", "想喝奶茶",
+            "作业写了吗", "今天过得怎么样", "发呆中…"
+        ),
+        "evening" to listOf(
+            "晚上好", "今天辛苦了", "夜幕降临~",
+            "追剧吗", "有点饿了", "月亮出来了吗"
+        ),
+        "night" to listOf(
+            "夜深了…", "还没睡吗", "安静的夜晚",
+            "数绵羊…", "今天的我也很努力", "晚安…"
+        )
+    )
+
+    // Notification whisper texts by time period
+    private val whisperTexts = mapOf(
+        "morning" to listOf("早安~ 今天也要加油", "新的一天开始啦", "早起的鱼儿有虫吃"),
+        "noon" to listOf("记得吃午饭哦", "中午好~ 休息一下", "午间摸鱼时间"),
+        "afternoon" to listOf("下午茶时间~", "下午好 继续加油", "摸鱼不要被发现"),
+        "evening" to listOf("傍晚了~ 今天辛苦了", "晚饭吃了吗", "黄昏很美"),
+        "night" to listOf("夜深了 桌宠陪着你", "安静的夜晚", "我在这里陪你")
     )
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -198,6 +246,10 @@ class OverlayService : Service() {
         startLonelinessTimer()
         startBatteryReceiver()
         startAiMessageReceiver()
+        startHeatDecay()
+        startSelfTalkTimer()
+        startNotificationWhisper()
+        startDrinkWaterReminder()
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -320,6 +372,17 @@ class OverlayService : Service() {
     }
 
     private fun onAppSwitched(packageName: String) {
+        // Quick app switch detection
+        val now = System.currentTimeMillis()
+        appSwitchTimestamps.add(now)
+        appSwitchTimestamps.removeAll { now - it > 60_000L }
+        if (appSwitchTimestamps.size >= 3) {
+            showBubble("切来切去的…杂耍呢？", BubbleStyle.ALERT)
+            triggerAnimation("doubletap", 700)
+            appSwitchTimestamps.clear()
+            return
+        }
+
         val reaction = when (packageName) {
             "com.tencent.mm" -> "在和谁聊天呀？"
             "com.bilibili.app.in" -> "B站！今天看点啥？"
@@ -505,6 +568,113 @@ class OverlayService : Service() {
         aiMessageReceiver = null
     }
 
+    // ===== Heat System =====
+    private fun startHeatDecay() {
+        heatDecayTimer = Timer()
+        heatDecayTimer?.schedule(object : TimerTask() {
+            override fun run() {
+                if (heat > 0) {
+                    heat = (heat - 1).coerceAtLeast(0)
+                    handler.post { visualHeatUpdate() }
+                }
+            }
+        }, 30_000L, 30_000L)
+    }
+
+    private fun addHeat(amount: Int) {
+        heat = (heat + amount).coerceAtMost(100)
+        visualHeatUpdate()
+    }
+
+    private fun visualHeatUpdate() {
+        when {
+            heat >= 60 -> triggerAnimation("hot", 1500)
+            heat >= 30 -> triggerAnimation("heating", 1000)
+        }
+        webView.evaluateJavascript("progressHeat($heat)", null)
+    }
+
+    private fun stopHeatDecay() {
+        heatDecayTimer?.cancel()
+        heatDecayTimer = null
+    }
+
+    // ===== Self-Talk System =====
+    private fun getTimePeriod(): String {
+        val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+        return when (hour) {
+            in 5..10 -> "morning"
+            in 11..13 -> "noon"
+            in 14..17 -> "afternoon"
+            in 18..21 -> "evening"
+            else -> "night"
+        }
+    }
+
+    private fun startSelfTalkTimer() {
+        selfTalkTimer = Timer()
+        selfTalkTimer?.schedule(object : TimerTask() {
+            override fun run() {
+                if (Math.random() < 0.3) {
+                    val period = getTimePeriod()
+                    val pool = selfTalkPools[period] ?: selfTalkPools["afternoon"]!!
+                    val text = pool.random()
+                    handler.post { showBubble(text) }
+                }
+            }
+        }, 1_200_000L, 1_200_000L) // 20 minutes
+    }
+
+    private fun stopSelfTalkTimer() {
+        selfTalkTimer?.cancel()
+        selfTalkTimer = null
+    }
+
+    // ===== Notification Whisper =====
+    private fun startNotificationWhisper() {
+        notificationWhisperTimer = Timer()
+        notificationWhisperTimer?.schedule(object : TimerTask() {
+            override fun run() {
+                handler.post { rebuildNotification() }
+            }
+        }, 3_600_000L, 3_600_000L) // 1 hour
+    }
+
+    private fun rebuildNotification() {
+        val period = getTimePeriod()
+        val pool = whisperTexts[period] ?: whisperTexts["afternoon"]!!
+        val text = pool.random()
+        val notification = androidx.core.app.NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("淮鱼桌宠")
+            .setContentText(text)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_LOW)
+            .setOngoing(true)
+            .build()
+        notificationManager.notify(NOTIFICATION_ID, notification)
+    }
+
+    private fun stopNotificationWhisper() {
+        notificationWhisperTimer?.cancel()
+        notificationWhisperTimer = null
+    }
+
+    // ===== Drink Water Reminder =====
+    private fun startDrinkWaterReminder() {
+        drinkWaterTimer = Timer()
+        drinkWaterTimer?.schedule(object : TimerTask() {
+            override fun run() {
+                val texts = listOf("该喝水啦~", "记得喝水~")
+                handler.post { showBubble(texts.random(), BubbleStyle.SYSTEM) }
+            }
+        }, 7_200_000L, 7_200_000L) // 2 hours
+    }
+
+    private fun stopDrinkWaterReminder() {
+        drinkWaterTimer?.cancel()
+        drinkWaterTimer = null
+    }
+
     private fun onTap() {
         tapCount++
         tapResetRunnable?.let { handler.removeCallbacks(it) }
@@ -516,6 +686,7 @@ class OverlayService : Service() {
     }
 
     private fun handleTapResult(count: Int) {
+        addHeat(count * 10)  // More taps = more heat
         when {
             count == 1 -> {
                 showBubble(singleTapTexts.random())
@@ -658,6 +829,10 @@ class OverlayService : Service() {
         stopLonelinessTimer()
         stopBatteryReceiver()
         stopAiMessageReceiver()
+        stopHeatDecay()
+        stopSelfTalkTimer()
+        stopNotificationWhisper()
+        stopDrinkWaterReminder()
         removeBubble()
         if (isViewInitialized) {
             webView.destroy()

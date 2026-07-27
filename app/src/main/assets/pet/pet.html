@@ -77,6 +77,18 @@ html, body { width:100%; height:100%; overflow:hidden; background:transparent; }
   100% { transform: scale(1); }
 }
 
+/* Heat glow - warm blush */
+@keyframes heatglow {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+/* Hot pulse - intense blush */
+@keyframes hotpulse {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.1); }
+}
+
 .state-idle #pet { animation: breathe 3s ease-in-out infinite; }
 .state-poked #pet { animation: poked 0.5s ease forwards; }
 .state-angry #pet { animation: angry 0.6s ease forwards; }
@@ -84,10 +96,22 @@ html, body { width:100%; height:100%; overflow:hidden; background:transparent; }
 .state-comeback #pet { animation: comeback 0.6s ease forwards; }
 .state-doubletap #pet { animation: doubletap 0.6s ease forwards; }
 .state-hideface #pet { animation: hideface 0.5s ease forwards; }
+.state-heating #pet { animation: breathe 3s ease-in-out infinite; }
+.state-hot #pet { animation: doubletap 0.6s ease forwards; }
+
+#heat-overlay {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+  background: radial-gradient(circle at 50% 60%, rgba(255,100,100,0.3), transparent 70%);
+  opacity: 0; pointer-events: none; border-radius: 50%;
+  transition: opacity 0.5s ease;
+}
+#heat-overlay.heating { opacity: 0.4; animation: heatglow 2s ease-in-out infinite; }
+#heat-overlay.hot { opacity: 0.7; animation: hotpulse 1s ease-in-out infinite; }
 </style>
 </head>
 <body>
 <div id="pet-container" class="state-idle">
+  <div id="heat-overlay"></div>
   <svg id="pet" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
     <!-- Face circle -->
     <circle cx="100" cy="110" r="70" fill="#FFFFFF" stroke="#E0E0E0" stroke-width="2"/>
@@ -208,6 +232,16 @@ function resetToDefault() {
     customImage.style.display = 'none';
     customImage.src = '';
     petSvg.style.display = 'block';
+}
+// Heat visual feedback
+const heatOverlay = document.getElementById('heat-overlay');
+function progressHeat(value) {
+    heatOverlay.className = '';
+    if (value >= 60) {
+        heatOverlay.className = 'hot';
+    } else if (value >= 30) {
+        heatOverlay.className = 'heating';
+    }
 }
 // Initialize
 setState('idle', 0);
