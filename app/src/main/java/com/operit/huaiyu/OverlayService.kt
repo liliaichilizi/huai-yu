@@ -21,6 +21,10 @@ import kotlin.math.hypot
 import android.os.FileObserver
 import android.os.Environment
 import java.io.File
+import java.util.Timer
+import java.util.TimerTask
+import android.app.usage.UsageStatsManager
+import android.content.Context
 
 @Suppress("DEPRECATION")
 class OverlayService : Service() {
@@ -33,6 +37,8 @@ class OverlayService : Service() {
     private val handler = Handler(Looper.getMainLooper())
 
     private var screenshotObserver: FileObserver? = null
+    private var appCheckTimer: Timer? = null
+    private var lastForegroundApp: String? = null
 
     private var bubbleView: BubbleView? = null
     private var bubbleParams: WindowManager.LayoutParams? = null
@@ -157,6 +163,7 @@ class OverlayService : Service() {
         setupTouchHandler()
         windowManager.addView(webView, layoutParams)
         startScreenshotObserver()
+        startAppObserver()
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -246,6 +253,53 @@ class OverlayService : Service() {
             }
         }
         screenshotObserver?.startWatching()
+    }
+
+    private fun startAppObserver() {
+        appCheckTimer = Timer()
+        appCheckTimer?.schedule(object : TimerTask() {
+            override fun run() {
+                val foregroundApp = getForegroundApp()
+                if (foregroundApp != null && foregroundApp != lastForegroundApp) {
+                    lastForegroundApp = foregroundApp
+                    handler.post { onAppSwitched(foregroundApp) }
+                }
+            }
+        }, 0, 3000) // Check every 3 seconds
+    }
+
+    private fun getForegroundApp(): String? {
+        var currentApp: String? = null
+        val usm = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+        val time = System.currentTimeMillis()
+        val appList = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, time - 1000 * 10, time)
+        if (appList != null && appList.isNotEmpty()) {
+            val sortedList = appList.sortedByDescending { it.lastTimeUsed }
+            if (sortedList.isNotEmpty()) {
+                currentApp = sortedList[0].packageName
+            }
+        }
+        return currentApp
+    }
+
+    private fun onAppSwitched(packageName: String) {
+        val reaction = when (packageName) {
+            "com.tencent.mm" -> "在和谁聊天呀？"
+            "com.bilibili.app.in" -> "B站！今天看点啥？"
+            "com.ss.android.ugc.aweme" -> "刷抖音停不下来了？"
+            "com.netease.cloudmusic" -> "这首歌我也喜欢~"
+            "com.autonavi.minimap", "com.baidu.BaiduMap" -> "要出门吗？注意安全哦。"
+            "com.android.launcher", "com.miui.home", "com.huawei.android.launcher" -> "回主屏幕休息一下~"
+            else -> null // No reaction for other apps
+        }
+        if (reaction != null) {
+            showBubble(reaction)
+        }
+    }
+
+    private fun stopAppObserver() {
+        appCheckTimer?.cancel()
+        appCheckTimer = null
     }
 
     private fun onTap() {
@@ -396,6 +450,7 @@ class OverlayService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         screenshotObserver?.stopWatching()
+        stopAppObserver()
         removeBubble()
         if (isViewInitialized) {
             webView.destroy()

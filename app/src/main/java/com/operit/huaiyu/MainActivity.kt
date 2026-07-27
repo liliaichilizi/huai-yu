@@ -14,6 +14,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import java.io.File
 import java.io.FileOutputStream
+import android.app.AppOpsManager
+import android.content.Context
 
 class MainActivity : AppCompatActivity() {
     companion object {
@@ -75,12 +77,17 @@ class MainActivity : AppCompatActivity() {
         updateStatus()
     }
 
+    override fun onResume() {
+        super.onResume()
+        updateStatus()
+    }
+
     private fun setupButtons() {
         startButton.setOnClickListener {
-            if (checkOverlayPermission()) {
-                startOverlayService()
-            } else {
-                requestOverlayPermission()
+            when {
+                !checkOverlayPermission() -> requestOverlayPermission()
+                !hasUsageStatsPermission() -> requestUsageStatsPermission()
+                else -> startOverlayService()
             }
         }
         stopButton.setOnClickListener {
@@ -218,11 +225,37 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateStatus() {
-        val hasPermission = checkOverlayPermission()
-        statusText.text = if (hasPermission) {
-            "悬浮窗权限：已授予\n点击下方按钮启动桌宠"
+        val hasOverlay = checkOverlayPermission()
+        val hasUsageStats = hasUsageStatsPermission()
+
+        var status = "悬浮窗权限: ${if(hasOverlay) "✅" else "❌"}\n"
+        status += "应用使用情况权限: ${if(hasUsageStats) "✅" else "❌"}\n\n"
+
+        status += when {
+            !hasOverlay -> "请先授予悬浮窗权限"
+            !hasUsageStats -> "请授予应用使用情况权限，以便桌宠与您互动"
+            else -> "一切就绪，可以启动桌宠了"
+        }
+        statusText.text = status
+    }
+
+    private fun hasUsageStatsPermission(): Boolean {
+        val appOps = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+        val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            appOps.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), packageName)
         } else {
-            "悬浮窗权限：未授予\n点击启动后会跳转到权限设置"
+            appOps.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), packageName)
+        }
+        return mode == AppOpsManager.MODE_ALLOWED
+    }
+
+    private fun requestUsageStatsPermission() {
+        try {
+            val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+            startActivity(intent)
+            Toast.makeText(this, "请找到“淮鱼”并开启权限", Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "无法打开权限设置页面", Toast.LENGTH_SHORT).show()
         }
     }
 }
