@@ -132,9 +132,12 @@ html, body { width:100%; height:100%; overflow:hidden; background:transparent; }
       <circle cx="100" cy="132" r="5" fill="none" stroke="#333" stroke-width="2"/>
     </g>
   </svg>
+  <img id="custom-image" style="display:none; width:100%; height:100%; object-fit:contain;">
 </div>
 <script>
 const container = document.getElementById('pet-container');
+const petSvg = document.getElementById('pet');
+const customImage = document.getElementById('custom-image');
 let currentState = 'idle';
 let stateTimer = null;
 
@@ -152,7 +155,6 @@ function setState(state, duration) {
     }, duration);
   }
 }
-
 function setFace(state) {
   // Reset all
   document.getElementById('eyes-normal').style.display = 'none';
@@ -193,14 +195,22 @@ function setFace(state) {
       document.getElementById('mouth-normal').style.display = '';
   }
 }
-
-// Initialize
-setState('idle', 0);
-
 // Expose to Android
 function triggerState(state, durationMs) {
   setState(state, durationMs || 1000);
 }
+function setCustomImage(path) {
+    petSvg.style.display = 'none';
+    customImage.src = path;
+    customImage.style.display = 'block';
+}
+function resetToDefault() {
+    customImage.style.display = 'none';
+    customImage.src = '';
+    petSvg.style.display = 'block';
+}
+// Initialize
+setState('idle', 0);
 </script>
 </body>
 </html>

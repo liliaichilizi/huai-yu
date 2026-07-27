@@ -52,7 +52,9 @@ class OverlayService : Service() {
 
     companion object {
         const val ACTION_UPDATE_SIZE = "com.operit.huaiyu.ACTION_UPDATE_SIZE"
+        const val ACTION_UPDATE_IMAGE = "com.operit.huaiyu.ACTION_UPDATE_IMAGE"
         const val EXTRA_PET_SIZE = "extra_pet_size"
+        const val EXTRA_IMAGE_PATH = "extra_image_path"
         private const val CHANNEL_ID = "huaiyu_overlay_channel"
         private const val NOTIFICATION_ID = 1
         private const val LONG_PRESS_TIMEOUT = 500L
@@ -78,6 +80,10 @@ class OverlayService : Service() {
             ACTION_UPDATE_SIZE -> {
                 val sizeDp = intent.getIntExtra(EXTRA_PET_SIZE, PetPrefs.getPetSize(this))
                 updatePetSize(sizeDp)
+            }
+            ACTION_UPDATE_IMAGE -> {
+                val imagePath = intent.getStringExtra(EXTRA_IMAGE_PATH)
+                updatePetImage(imagePath)
             }
             else -> {
                 if (!isViewInitialized) {
@@ -346,6 +352,15 @@ class OverlayService : Service() {
         layoutParams.width = newSize
         layoutParams.height = newSize
         windowManager.updateViewLayout(webView, layoutParams)
+    }
+
+    private fun updatePetImage(imagePath: String?) {
+        val script = if (imagePath != null) {
+            "setCustomImage('file://$imagePath')"
+        } else {
+            "resetToDefault()"
+        }
+        webView.evaluateJavascript(script, null)
     }
 
     private fun dp(value: Int): Int {

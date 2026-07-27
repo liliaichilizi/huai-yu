@@ -12,9 +12,10 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import java.io.File
+import java.io.FileOutputStream
 
 class MainActivity : AppCompatActivity() {
-
     companion object {
         private const val REQUEST_OVERLAY_PERMISSION = 1001
     }
@@ -33,14 +34,23 @@ class MainActivity : AppCompatActivity() {
         ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         uri?.let {
-            contentResolver.takePersistableUriPermission(
-                it, Intent.FLAG_GRANT_READ_URI_PERMISSION
-            )
-            PetPrefs.setCustomImageUri(this, it.toString())
-            PetPrefs.setUseCustomImage(this, true)
-            previewImage.setImageURI(it)
-            imageHint.text = "已选择自定义图片 重启桌宠生效"
-            Toast.makeText(this, "图片已选择, 请重启桌宠", Toast.LENGTH_SHORT).show()
+            contentResolver.takePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            
+            // 1. Copy image to internal storage
+            val internalPath = copyUriToInternalStorage(it, "custom_pet.png")
+            if (internalPath != null) {
+                // 2. Save the new path
+                PetPrefs.setCustomImageUri(this, internalPath)
+                PetPrefs.setUseCustomImage(this, true)
+                previewImage.setImageURI(Uri.fromFile(File(internalPath)))
+                imageHint.text = "自定义外观已生效"
+                
+                // 3. Notify service immediately
+                updatePetImage(internalPath)
+                Toast.makeText(this, "外观已更新", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "图片处理失败", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -108,8 +118,34 @@ class MainActivity : AppCompatActivity() {
             PetPrefs.setCustomImageUri(this, null)
             previewImage.setImageDrawable(null)
             previewImage.setBackgroundColor(0xFFE8E8E8.toInt())
-            imageHint.text = "已恢复默认小猫 重启桌宠生效"
-            Toast.makeText(this, "已恢复默认, 请重启桌宠", Toast.LENGTH_SHORT).show()
+            imageHint.text = "已恢复默认小猫"
+            updatePetImage(null) // Pass null to reset
+            Toast.makeText(this, "已恢复默认外观", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun updatePetImage(imagePath: String?) {
+        val intent = Intent(this, OverlayService::class.java).apply {
+            action = OverlayService.ACTION_UPDATE_IMAGE
+            putExtra(OverlayService.EXTRA_IMAGE_PATH, imagePath)
+        }
+        startService(intent)
+    }
+
+    private fun copyUriToInternalStorage(uri: Uri, fileName: String): String? {
+        return try {
+            val inputStream = contentResolver.openInputStream(uri)
+            val file = File(filesDir, fileName)
+            val outputStream = FileOutputStream(file)
+            inputStream?.use { input ->
+                outputStream.use { output ->
+                    input.copyTo(output)
+                }
+            }
+            file.absolutePath
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
         }
     }
 
@@ -117,12 +153,11 @@ class MainActivity : AppCompatActivity() {
         val size = PetPrefs.getPetSize(this)
         sizeSeekBar.progress = size
         sizeLabel.text = "大小：${size}dp"
-
         if (PetPrefs.useCustomImage(this)) {
-            val uriStr = PetPrefs.getCustomImageUri(this)
-            if (uriStr != null) {
+            val path = PetPrefs.getCustomImageUri(this)
+            if (path != null) {
                 try {
-                    previewImage.setImageURI(Uri.parse(uriStr))
+                    previewImage.setImageURI(Uri.fromFile(File(path)))
                 } catch (e: Exception) {
                     previewImage.setImageDrawable(null)
                 }
@@ -132,7 +167,6 @@ class MainActivity : AppCompatActivity() {
             imageHint.text = "当前使用默认小猫"
         }
     }
-
     private fun checkOverlayPermission(): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             Settings.canDrawOverlays(this)
