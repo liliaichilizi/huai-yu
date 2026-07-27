@@ -18,7 +18,11 @@ import android.view.WindowManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import kotlin.math.hypot
+import android.os.FileObserver
+import android.os.Environment
+import java.io.File
 
+@Suppress("DEPRECATION")
 class OverlayService : Service() {
 
     private var isViewInitialized = false
@@ -27,6 +31,8 @@ class OverlayService : Service() {
     private lateinit var layoutParams: WindowManager.LayoutParams
     private lateinit var notificationManager: NotificationManager
     private val handler = Handler(Looper.getMainLooper())
+
+    private var screenshotObserver: FileObserver? = null
 
     private var bubbleView: BubbleView? = null
     private var bubbleParams: WindowManager.LayoutParams? = null
@@ -120,6 +126,8 @@ class OverlayService : Service() {
     private fun setupOverlayView() {
         webView = WebView(this).apply {
             settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            settings.allowFileAccess = true // <-- THE FIX
             settings.useWideViewPort = true
             settings.loadWithOverviewMode = true
             setBackgroundColor(0x00000000)
@@ -148,6 +156,7 @@ class OverlayService : Service() {
 
         setupTouchHandler()
         windowManager.addView(webView, layoutParams)
+        startScreenshotObserver()
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -221,10 +230,27 @@ class OverlayService : Service() {
         }
     }
 
+    private fun startScreenshotObserver() {
+        val path = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES).absolutePath + "/Screenshots"
+        val screenshotDir = File(path)
+        if (!screenshotDir.exists()) screenshotDir.mkdirs()
+
+        screenshotObserver = object : FileObserver(path, CREATE) {
+            override fun onEvent(event: Int, file: String?) {
+                if (event == CREATE && file != null) {
+                    handler.post {
+                        showBubble("刚截了图，需要看看吗？")
+                        triggerAnimation("poked", 1000)
+                    }
+                }
+            }
+        }
+        screenshotObserver?.startWatching()
+    }
+
     private fun onTap() {
         tapCount++
         tapResetRunnable?.let { handler.removeCallbacks(it) }
-
         tapResetRunnable = Runnable {
             handleTapResult(tapCount)
             tapCount = 0
@@ -369,6 +395,7 @@ class OverlayService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        screenshotObserver?.stopWatching()
         removeBubble()
         if (isViewInitialized) {
             webView.destroy()
