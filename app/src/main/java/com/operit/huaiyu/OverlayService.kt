@@ -77,11 +77,17 @@ class OverlayService : Service() {
     private val flingVelocityThreshold = 2000f
     private val dragThreshold = 15f
 
+    // AI message receiver
+    private var aiMessageReceiver: BroadcastReceiver? = null
+
     companion object {
         const val ACTION_UPDATE_SIZE = "com.operit.huaiyu.ACTION_UPDATE_SIZE"
         const val ACTION_UPDATE_IMAGE = "com.operit.huaiyu.ACTION_UPDATE_IMAGE"
+        const val ACTION_AI_MESSAGE = "com.operit.huaiyu.AI_MESSAGE"
         const val EXTRA_PET_SIZE = "extra_pet_size"
         const val EXTRA_IMAGE_PATH = "extra_image_path"
+        const val EXTRA_AI_TEXT = "text"
+        const val EXTRA_AI_STYLE = "style"
         private const val CHANNEL_ID = "huaiyu_overlay_channel"
         private const val NOTIFICATION_ID = 1
         private const val LONG_PRESS_TIMEOUT = 500L
@@ -191,6 +197,7 @@ class OverlayService : Service() {
         startNotificationReceiver()
         startLonelinessTimer()
         startBatteryReceiver()
+        startAiMessageReceiver()
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -466,6 +473,38 @@ class OverlayService : Service() {
         batteryReceiver = null
     }
 
+    // ===== AI Message Receiver =====
+    private fun startAiMessageReceiver() {
+        aiMessageReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                if (intent?.action == ACTION_AI_MESSAGE) {
+                    val text = intent.getStringExtra(EXTRA_AI_TEXT) ?: return
+                    val styleName = intent.getStringExtra(EXTRA_AI_STYLE) ?: "NORMAL"
+                    val style = try {
+                        BubbleStyle.valueOf(styleName.uppercase())
+                    } catch (_: Exception) {
+                        BubbleStyle.NORMAL
+                    }
+                    handler.post {
+                        showBubble(text, style)
+                        triggerAnimation("poked", 800)
+                    }
+                }
+            }
+        }
+        val filter = IntentFilter(ACTION_AI_MESSAGE)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(aiMessageReceiver, filter, Context.RECEIVER_EXPORTED)
+        } else {
+            registerReceiver(aiMessageReceiver, filter)
+        }
+    }
+
+    private fun stopAiMessageReceiver() {
+        aiMessageReceiver?.let { unregisterReceiver(it) }
+        aiMessageReceiver = null
+    }
+
     private fun onTap() {
         tapCount++
         tapResetRunnable?.let { handler.removeCallbacks(it) }
@@ -618,6 +657,7 @@ class OverlayService : Service() {
         stopNotificationReceiver()
         stopLonelinessTimer()
         stopBatteryReceiver()
+        stopAiMessageReceiver()
         removeBubble()
         if (isViewInitialized) {
             webView.destroy()
