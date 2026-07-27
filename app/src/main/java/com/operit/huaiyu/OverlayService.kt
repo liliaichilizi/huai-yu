@@ -5,13 +5,16 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
+import android.graphics.BitmapFactory
 import android.graphics.PixelFormat
+import android.net.Uri
 import android.os.Build
 import android.os.IBinder
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.widget.ImageView
 
 class OverlayService : Service() {
 
@@ -60,8 +63,14 @@ class OverlayService : Service() {
     }
 
     private fun setupOverlayView() {
-        // 使用自定义 PetView 代替纯色方块
-        overlayView = PetView(this)
+        val useCustom = PetPrefs.useCustomImage(this)
+        val customUri = PetPrefs.getCustomImageUri(this)
+
+        overlayView = if (useCustom && customUri != null) {
+            createCustomImageView(customUri)
+        } else {
+            PetView(this)
+        }
 
         val overlayType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -70,7 +79,9 @@ class OverlayService : Service() {
             WindowManager.LayoutParams.TYPE_PHONE
         }
 
-        val petSize = dp(100)
+        val petSizeDp = PetPrefs.getPetSize(this)
+        val petSize = dp(petSizeDp)
+
         layoutParams = WindowManager.LayoutParams(
             petSize,
             petSize,
@@ -110,6 +121,29 @@ class OverlayService : Service() {
         }
 
         windowManager.addView(overlayView, layoutParams)
+    }
+
+    private fun createCustomImageView(uriString: String): ImageView {
+        val imageView = ImageView(this)
+        imageView.scaleType = ImageView.ScaleType.FIT_CENTER
+        try {
+            val uri = Uri.parse(uriString)
+            val inputStream = contentResolver.openInputStream(uri)
+            if (inputStream != null) {
+                val bitmap = BitmapFactory.decodeStream(inputStream)
+                inputStream.close()
+                imageView.setImageBitmap(bitmap)
+            } else {
+                // fallback to PetView if cannot read
+                return ImageView(this).also {
+                    // won't happen in practice; just safety
+                }
+            }
+        } catch (e: Exception) {
+            // 读取失败时显示空白
+            imageView.setBackgroundColor(0x00000000)
+        }
+        return imageView
     }
 
     private fun dp(value: Int): Int {
