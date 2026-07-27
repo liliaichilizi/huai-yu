@@ -25,6 +25,8 @@ import java.util.Timer
 import java.util.TimerTask
 import android.app.usage.UsageStatsManager
 import android.content.Context
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
 
 @Suppress("DEPRECATION")
 class OverlayService : Service() {
@@ -39,6 +41,7 @@ class OverlayService : Service() {
     private var screenshotObserver: FileObserver? = null
     private var appCheckTimer: Timer? = null
     private var lastForegroundApp: String? = null
+    private var notificationReceiver: BroadcastReceiver? = null
 
     private var bubbleView: BubbleView? = null
     private var bubbleParams: WindowManager.LayoutParams? = null
@@ -164,6 +167,7 @@ class OverlayService : Service() {
         windowManager.addView(webView, layoutParams)
         startScreenshotObserver()
         startAppObserver()
+        startNotificationReceiver()
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -300,6 +304,36 @@ class OverlayService : Service() {
     private fun stopAppObserver() {
         appCheckTimer?.cancel()
         appCheckTimer = null
+    }
+
+    private fun startNotificationReceiver() {
+        notificationReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                if (intent?.action == NotificationListener.ACTION_NOTIFICATION_POSTED) {
+                    val packageName = intent.getStringExtra(NotificationListener.EXTRA_PACKAGE_NAME)
+                    val title = intent.getStringExtra(NotificationListener.EXTRA_TITLE)
+                    val text = intent.getStringExtra(NotificationListener.EXTRA_TEXT)
+                    
+                    val message = when (packageName) {
+                        "com.tencent.mm" -> "收到一条微信: ${title}"
+                        "com.tencent.mobileqq" -> "QQ消息: ${title}"
+                        else -> "收到新消息: ${title}"
+                    }
+                    showBubble(message)
+                }
+            }
+        }
+        val filter = IntentFilter(NotificationListener.ACTION_NOTIFICATION_POSTED)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(notificationReceiver, filter, RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(notificationReceiver, filter)
+        }
+    }
+
+    private fun stopNotificationReceiver() {
+        notificationReceiver?.let { unregisterReceiver(it) }
+        notificationReceiver = null
     }
 
     private fun onTap() {
@@ -451,6 +485,7 @@ class OverlayService : Service() {
         super.onDestroy()
         screenshotObserver?.stopWatching()
         stopAppObserver()
+        stopNotificationReceiver()
         removeBubble()
         if (isViewInitialized) {
             webView.destroy()

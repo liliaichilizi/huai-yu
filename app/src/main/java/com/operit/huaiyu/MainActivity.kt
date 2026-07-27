@@ -16,6 +16,7 @@ import java.io.File
 import java.io.FileOutputStream
 import android.app.AppOpsManager
 import android.content.Context
+import android.content.ComponentName
 
 class MainActivity : AppCompatActivity() {
     companion object {
@@ -87,6 +88,7 @@ class MainActivity : AppCompatActivity() {
             when {
                 !checkOverlayPermission() -> requestOverlayPermission()
                 !hasUsageStatsPermission() -> requestUsageStatsPermission()
+                !hasNotificationListenerPermission() -> requestNotificationListenerPermission()
                 else -> startOverlayService()
             }
         }
@@ -227,13 +229,16 @@ class MainActivity : AppCompatActivity() {
     private fun updateStatus() {
         val hasOverlay = checkOverlayPermission()
         val hasUsageStats = hasUsageStatsPermission()
+        val hasNotifListener = hasNotificationListenerPermission()
 
         var status = "悬浮窗权限: ${if(hasOverlay) "✅" else "❌"}\n"
-        status += "应用使用情况权限: ${if(hasUsageStats) "✅" else "❌"}\n\n"
+        status += "应用使用情况权限: ${if(hasUsageStats) "✅" else "❌"}\n"
+        status += "通知读取权限: ${if(hasNotifListener) "✅" else "❌"}\n\n"
 
         status += when {
             !hasOverlay -> "请先授予悬浮窗权限"
-            !hasUsageStats -> "请授予应用使用情况权限，以便桌宠与您互动"
+            !hasUsageStats -> "请授予应用使用情况权限"
+            !hasNotifListener -> "请授予通知读取权限，让我能听到你的消息"
             else -> "一切就绪，可以启动桌宠了"
         }
         statusText.text = status
@@ -256,6 +261,22 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "请找到“淮鱼”并开启权限", Toast.LENGTH_LONG).show()
         } catch (e: Exception) {
             Toast.makeText(this, "无法打开权限设置页面", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun hasNotificationListenerPermission(): Boolean {
+        val cn = ComponentName(this, NotificationListener::class.java)
+        val flat = Settings.Secure.getString(contentResolver, "enabled_notification_listeners")
+        return flat != null && flat.contains(cn.flattenToString())
+    }
+
+    private fun requestNotificationListenerPermission() {
+        try {
+            val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+            startActivity(intent)
+            Toast.makeText(this, "请找到“淮鱼”并开启权限", Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "无法打开通知权限设置页面", Toast.LENGTH_SHORT).show()
         }
     }
 }
