@@ -18,23 +18,32 @@ import android.widget.ImageView
 
 class OverlayService : Service() {
 
+    private var isViewInitialized = false
     private lateinit var windowManager: WindowManager
     private lateinit var overlayView: View
     private lateinit var layoutParams: WindowManager.LayoutParams
 
     companion object {
+        const val ACTION_UPDATE_SIZE = "com.operit.huaiyu.ACTION_UPDATE_SIZE"
+        const val EXTRA_PET_SIZE = "extra_pet_size"
         private const val CHANNEL_ID = "huaiyu_overlay_channel"
         private const val NOTIFICATION_ID = 1
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    override fun onCreate() {
-        super.onCreate()
-        createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification())
-        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-        setupOverlayView()
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_UPDATE_SIZE) {
+            val sizeDp = intent.getIntExtra(EXTRA_PET_SIZE, PetPrefs.getPetSize(this))
+            updatePetSize(sizeDp)
+        } else if (!isViewInitialized) {
+            createNotificationChannel()
+            startForeground(NOTIFICATION_ID, buildNotification())
+            windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+            setupOverlayView()
+            isViewInitialized = true
+        }
+        return START_STICKY
     }
 
     private fun createNotificationChannel() {
@@ -123,6 +132,14 @@ class OverlayService : Service() {
         windowManager.addView(overlayView, layoutParams)
     }
 
+    private fun updatePetSize(sizeDp: Int) {
+        if (!isViewInitialized) return
+        val newSize = dp(sizeDp)
+        layoutParams.width = newSize
+        layoutParams.height = newSize
+        windowManager.updateViewLayout(overlayView, layoutParams)
+    }
+
     private fun createCustomImageView(uriString: String): ImageView {
         val imageView = ImageView(this)
         imageView.scaleType = ImageView.ScaleType.FIT_CENTER
@@ -134,13 +151,10 @@ class OverlayService : Service() {
                 inputStream.close()
                 imageView.setImageBitmap(bitmap)
             } else {
-                // fallback to PetView if cannot read
-                return ImageView(this).also {
-                    // won't happen in practice; just safety
-                }
+                // fallback
+                return ImageView(this)
             }
         } catch (e: Exception) {
-            // 读取失败时显示空白
             imageView.setBackgroundColor(0x00000000)
         }
         return imageView
@@ -152,8 +166,9 @@ class OverlayService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        if (::overlayView.isInitialized) {
+        if (isViewInitialized) {
             windowManager.removeView(overlayView)
         }
+        isViewInitialized = false
     }
 }

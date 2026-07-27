@@ -33,15 +33,14 @@ class MainActivity : AppCompatActivity() {
         ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         uri?.let {
-            // 持久化URI权限
             contentResolver.takePersistableUriPermission(
                 it, Intent.FLAG_GRANT_READ_URI_PERMISSION
             )
             PetPrefs.setCustomImageUri(this, it.toString())
             PetPrefs.setUseCustomImage(this, true)
             previewImage.setImageURI(it)
-            imageHint.text = "已选择自定义图片 重新启动桌宠生效"
-            Toast.makeText(this, "图片已选择", Toast.LENGTH_SHORT).show()
+            imageHint.text = "已选择自定义图片 重启桌宠生效"
+            Toast.makeText(this, "图片已选择, 请重启桌宠", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -86,11 +85,16 @@ class MainActivity : AppCompatActivity() {
                 sizeLabel.text = "大小：${size}dp"
                 if (fromUser) {
                     PetPrefs.setPetSize(this@MainActivity, size)
+                    // 发送广播或Intent通知Service实时更新大小
+                    val intent = Intent(this@MainActivity, OverlayService::class.java)
+                    intent.action = OverlayService.ACTION_UPDATE_SIZE
+                    intent.putExtra(OverlayService.EXTRA_PET_SIZE, size)
+                    startService(intent)
                 }
             }
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
             override fun onStopTrackingTouch(seekBar: SeekBar?) {
-                imageHint.text = "大小已保存 重新启动桌宠生效"
+                imageHint.text = "大小已实时更新"
             }
         })
     }
@@ -104,8 +108,8 @@ class MainActivity : AppCompatActivity() {
             PetPrefs.setCustomImageUri(this, null)
             previewImage.setImageDrawable(null)
             previewImage.setBackgroundColor(0xFFE8E8E8.toInt())
-            imageHint.text = "已恢复默认小猫 重新启动桌宠生效"
-            Toast.makeText(this, "已恢复默认", Toast.LENGTH_SHORT).show()
+            imageHint.text = "已恢复默认小猫 重启桌宠生效"
+            Toast.makeText(this, "已恢复默认, 请重启桌宠", Toast.LENGTH_SHORT).show()
         }
     }
 
