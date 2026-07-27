@@ -12,8 +12,6 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
-import android.widget.FrameLayout
-import androidx.core.app.NotificationCompat
 
 class OverlayService : Service() {
 
@@ -52,29 +50,18 @@ class OverlayService : Service() {
     }
 
     private fun buildNotification(): Notification {
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        return androidx.core.app.NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("淮鱼桌宠")
             .setContentText("桌宠正在陪着你")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
             .build()
     }
 
     private fun setupOverlayView() {
-        // 创建一个小方块作为桌宠占位
-        overlayView = FrameLayout(this).apply {
-            val petBlock = View(context).apply {
-                setBackgroundColor(0xFF6EC6FF.toInt()) // 淡蓝色小方块
-                val size = dp(60)
-                layoutParams = FrameLayout.LayoutParams(size, size).apply {
-                    gravity = Gravity.CENTER
-                }
-            }
-            addView(petBlock)
-            // 给整个容器设置圆角背景
-            setBackgroundColor(0x00000000) // 透明背景
-        }
+        // 使用自定义 PetView 代替纯色方块
+        overlayView = PetView(this)
 
         val overlayType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -83,9 +70,10 @@ class OverlayService : Service() {
             WindowManager.LayoutParams.TYPE_PHONE
         }
 
+        val petSize = dp(100)
         layoutParams = WindowManager.LayoutParams(
-            dp(80),
-            dp(80),
+            petSize,
+            petSize,
             overlayType,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
